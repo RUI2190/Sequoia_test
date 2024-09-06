@@ -64,3 +64,13 @@ def convert_dataset(tokenizer, file_path):
     dataset = dataset.map(tokenize_function, batched=True, remove_columns=['input_tokens'])
     dataset.set_format(type='torch', columns=['input_ids', "labels"])
     return dataset
+
+
+def convert_gsm8k_dataset(tokenizer, file_path, seq_len=256):
+    dataset = load_dataset("json", data_files=file_path, split="train")
+    def tokenize_function(examples):
+        text_data = [str(q) + " " + str(a) for q, a in zip(examples["question"], examples["answer"])]
+        return tokenizer(text_data, return_tensors='pt', max_length=seq_len, padding="max_length", truncation=True)
+    dataset = dataset.map(tokenize_function, batched=True, remove_columns=['question', 'answer'])
+    dataset.set_format(type='torch', columns=['input_ids', 'attention_mask'])
+    return dataset

@@ -9,9 +9,9 @@ from tqdm import tqdm
 from torch.nn.functional import softmax
 from accelerate import Accelerator
 import argparse
-from data_converter import convert_wiki_dataset, convert_cnn_dataset, convert_c4_dataset_eval, convert_wikimqa_dataset
+from data_converter import convert_wiki_dataset, convert_cnn_dataset, convert_c4_dataset_eval, convert_wikimqa_dataset, convert_gsm8k_dataset
 import argparse
-from Tree.SpecTree import SpecTree
+from log_tree.SpecTree import SpecTree
 import time
 from utils import get_sampling_logits, _make_causal_mask, cuda_graph_for_residual, cuda_graph_for_sampling_without_replacement
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
@@ -55,8 +55,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
     new_tokens_buffer =  torch.zeros(max_length).long().to('cuda:0')
     parents_buffer =  torch.zeros(max_length).long().to('cuda:0')
     position_ids = torch.zeros(max_length).long().to('cuda:0')
-    
-    
+
     with torch.no_grad():
         for step, batch in tqdm(enumerate(dataloader), total=num_eval_steps):
             input_ids = batch['input_ids'][..., :128]
@@ -81,7 +80,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
             while input_ids.shape[1] < 256 and terminate == False:
                 spectree.construct_grow_map()
                 valid_tokens, draft_kv_len, target_kv_len, terminate = spectree.verify()
-                
+
                 num_decoding_steps += (valid_tokens.shape[0] - input_ids.shape[1])
                 num_large_model_steps += 1
                 input_ids = valid_tokens.unsqueeze(0)
@@ -93,6 +92,9 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
             draft_model.clear_kv()
             target_model.clear_kv()
     print("total time :{:.5f}s, latency :{:.5f}s, decoding step: {}, large model step: {}, {}".format(total_time, total_time / num_decoding_steps, num_decoding_steps, num_large_model_steps, num_decoding_steps / num_large_model_steps))
+    forward_logs = spectree.get_forward_logs()
+    for key, value in forward_logs.items():
+        print(f"Log for {key}: {value}")
     return num_decoding_steps / num_large_model_steps
 
 
@@ -235,6 +237,9 @@ elif args.dataset == 'cnn':
     tokenized_dataset_eval = convert_cnn_dataset(tokenizer=tokenizer).select(eval_list[args.start :args.end])
 elif args.dataset == 'wikimqa':
     tokenized_dataset_eval = convert_cnn_dataset(tokenizer=tokenizer).select(eval_list[args.start :args.end])
+elif args.dataset == 'gsm8k':
+    file_path = "/workspace/haoyang/Sequoia_test/log_tests/gsm8k_train.jsonl"
+    tokenized_dataset_eval = convert_gsm8k_dataset(tokenizer=tokenizer, file_path=file_path).select(eval_list[args.start :args.end])
 else:
     tokenized_dataset_eval = convert_c4_dataset_eval(tokenizer=tokenizer).select(eval_list[args.start :args.end])
 
