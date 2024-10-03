@@ -3,19 +3,18 @@ sys.path.append("..")
 from transformers import DataCollatorForLanguageModeling, AutoTokenizer
 import torch
 import numpy as np 
-from datasets import load_from_disk
+from datasets import load_from_disk, Dataset
 from torch.utils.data.dataloader import DataLoader
 from tqdm import tqdm
 from torch.nn.functional import softmax
 from accelerate import Accelerator
 import argparse
-from data_converter import convert_wiki_dataset, convert_cnn_dataset, convert_c4_dataset_eval, convert_wikimqa_dataset, convert_gsm8k_dataset
+from data_converter import convert_dataset, convert_gsm8k_dataset
 import argparse
-from log_tests.log_SpecTree import SpecTree
+from log_tests.log_GreedySTree import GreedySTree
 import time
-from utils import get_sampling_logits, _make_causal_mask, cuda_graph_for_residual, cuda_graph_for_sampling_without_replacement
+from utils import get_sampling_logits, _make_causal_mask, cuda_graph_for_residual, cuda_graph_for_sampling_argmax 
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
-from Engine.offload_engine import OffloadEngine
 import random
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, help='model')
@@ -26,8 +25,8 @@ parser.add_argument('--start', type=int, default=0, help='start')
 parser.add_argument('--end', type=int, default=200, help='end')
 parser.add_argument('--T', type=float, default=0.6, help='temperature')
 parser.add_argument('--P', type=float, default=0.9, help='top_p')
-parser.add_argument('--M', type=int, default=256, help='max length')
 parser.add_argument('--seed', type=int, default=17, help='random seed')
+parser.add_argument('--M', type=int, default=256, help='max length')
 parser.add_argument('--Mode', type=str, default="greedy", help='tree mode')
 parser.add_argument('--offloading', action='store_true')
 args = parser.parse_args()
@@ -41,8 +40,7 @@ def setup_seed(seed):
 setup_seed(args.seed)
 
 
-
-def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInferenceEngine, dataloader: DataLoader, T=0.6, top_p=0.9,
+def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInferenceEngine, dataloader: DataLoader, T=0.6, top_p=0.9, 
             max_length=512, residual_graph=None, grow_map=None, sampling_callables = None,
             sample_gather_indices = None):
     num_eval_steps = len(dataloader)
@@ -55,7 +53,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
     new_tokens_buffer =  torch.zeros(max_length).long().to('cuda:0')
     parents_buffer =  torch.zeros(max_length).long().to('cuda:0')
     position_ids = torch.zeros(max_length).long().to('cuda:0')
-
+    
     with torch.no_grad():
         for step, batch in tqdm(enumerate(dataloader), total=num_eval_steps):
             input_ids = batch['input_ids'][..., :128]
@@ -65,7 +63,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
             draft_kv_len = 0
             target_kv_len = 0
             attn_mask.fill_(torch.finfo(dtype).min)
-            spectree = SpecTree(prefix=input_ids.squeeze(0), device='cuda:0', temperature=T,
+            spectree = GreedySTree(prefix=input_ids.squeeze(0), device='cuda:0', temperature=T,
                                     top_p=top_p,
                                     draft_kv_len=draft_kv_len, target_kv_len=target_kv_len,
                                     draft_model_engine=draft_model, target_model_engine=target_model, max_length=max_length, grow_map=grow_map,
@@ -80,7 +78,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
             while input_ids.shape[1] < 256 and terminate == False:
                 spectree.construct_grow_map()
                 valid_tokens, draft_kv_len, target_kv_len, terminate = spectree.verify()
-
+                
                 num_decoding_steps += (valid_tokens.shape[0] - input_ids.shape[1])
                 num_large_model_steps += 1
                 input_ids = valid_tokens.unsqueeze(0)
@@ -91,7 +89,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
             total_time += (t2 - t1)
             draft_model.clear_kv()
             target_model.clear_kv()
-    print("total time :{:.5f}s, latency :{:.5f}s, decoding step: {}, large model step: {}, {}".format(total_time, total_time / num_decoding_steps, num_decoding_steps, num_large_model_steps, num_decoding_steps / num_large_model_steps))
+    print("total time :{:.5f}s, latency :{:.5f}s, decoding step: {}, large model step: {}".format(total_time, total_time / num_decoding_steps, num_decoding_steps, num_large_model_steps))
     forward_logs = spectree.get_forward_logs()
     for key, value in forward_logs.items():
         print(f"Log for {key}: {value}")
@@ -144,7 +142,7 @@ def simulation_baseline(target_model : GraphInferenceEngineTG, dataloader: DataL
             
     print("total time :{:.5f}s, latency :{:.5f}s, decoding step: {}".format(total_time, total_time / num_decoding_steps, num_decoding_steps))
     return num_decoding_steps
-def simulation_benchmark(target_model : GraphInferenceEngineTG, draft_model: GraphInferenceEngine, dataloader: DataLoader, T=0.6, top_p=0.9, 
+def simulation_benchmark(target_model : GraphInferenceEngineTG, draft_model: GraphInferenceEngine, dataloader: DataLoader, T=0.6, top_p=0.9,  
                 max_length=512, residual_graph=None, grow_map=None, sampling_callables = None,
                 sample_gather_indices = None):
     num_eval_steps = len(dataloader)
@@ -174,7 +172,7 @@ def simulation_benchmark(target_model : GraphInferenceEngineTG, draft_model: Gra
             draft_kv_len = 0
             target_kv_len = 0
             attn_mask.fill_(torch.finfo(dtype).min)
-            spectree = SpecTree(prefix=input_ids.squeeze(0), device='cuda:0', temperature=T,
+            spectree = GreedySTree(prefix=input_ids.squeeze(0), device='cuda:0', temperature=T,
                                         top_p=top_p, 
                                         draft_kv_len=draft_kv_len, target_kv_len=target_kv_len,
                                         draft_model_engine=draft_model, target_model_engine=target_model, max_length=max_length, grow_map=grow_map,
@@ -225,61 +223,45 @@ def simulation_benchmark(target_model : GraphInferenceEngineTG, draft_model: Gra
 
 tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf", use_fast=False)
 tokenizer.pad_token = tokenizer.eos_token
+#tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 eval_list = list(range(200, 2000))
 import random
 random.shuffle(eval_list)
-
 if args.dataset == 'openwebtext':
-    tokenized_dataset_eval = load_from_disk("../dataset/openwebtext_eval").select(eval_list[args.start :args.end])
-elif args.dataset == 'wiki':
-    tokenized_dataset_eval = convert_wiki_dataset(tokenizer=tokenizer).select(eval_list[args.start :args.end])
-elif args.dataset == 'cnn':
-    tokenized_dataset_eval = convert_cnn_dataset(tokenizer=tokenizer).select(eval_list[args.start :args.end])
-elif args.dataset == 'wikimqa':
-    tokenized_dataset_eval = convert_cnn_dataset(tokenizer=tokenizer).select(eval_list[args.start :args.end])
+    tokenized_dataset_eval = load_from_disk("../dataset/openwebtext_eval").select(list(range(args.start, args.end)))
 elif args.dataset == 'gsm8k':
     file_path = "/workspace/haoyang/Sequoia_test/log_tests/gsm8k_train.jsonl"
     tokenized_dataset_eval = convert_gsm8k_dataset(tokenizer=tokenizer, file_path=file_path).select(eval_list[args.start :args.end])
 else:
-    tokenized_dataset_eval = convert_c4_dataset_eval(tokenizer=tokenizer).select(eval_list[args.start :args.end])
+    tokenized_dataset_eval = convert_dataset(tokenizer=tokenizer,file_path=args.dataset).select(list(range(args.start, args.end)))
 
 data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False)
 dataloader = DataLoader(tokenized_dataset_eval, batch_size=1, collate_fn=data_collator, shuffle=False)
 
 
 if args.Mode == 'baseline':
-    if args.offloading:
-        target_model = OffloadEngine(max_length=args.M, model_name_or_path = args.target, dtype = torch.float16, device="cuda:0")
-    else:
-        target_model =  GraphInferenceEngineTG(max_length=args.M, model_name_or_path = args.target, dtype = torch.float16, device="cuda:0")
+    target_model =  GraphInferenceEngineTG(max_length=args.M, model_name_or_path = args.target, dtype = torch.float16, device="cuda:0", offloading=args.offloading)
 else:
     draft_model = GraphInferenceEngine(max_length=args.M, model_name_or_path = args.model, dtype = torch.float16, device="cuda:0")
-    if args.offloading:
-        target_model = OffloadEngine(max_length=args.M, model_name_or_path = args.target, dtype = torch.float16, device="cuda:0")
-    else:
-        target_model =  GraphInferenceEngineTG(max_length=args.M, model_name_or_path = args.target, dtype = torch.float16, device="cuda:0")
-    
+    target_model = GraphInferenceEngineTG(max_length=args.M, model_name_or_path = args.target, dtype = torch.float16, device="cuda:0", offloading=args.offloading)
+    graph_capture_list = list(range(1, 129))
+    draft_model.initialize_cuda_graph(graph_capture_list)
     residual_graph = cuda_graph_for_residual()
     path = args.growmap
     grow_map = torch.load(path)
 
     tree_size = grow_map["size"]
-    print(tree_size)
     idx_lists = grow_map["roots"]
     branch_lists = grow_map['branches']
     draft_step = len(grow_map["roots"])
-    
-    graph_capture_list = [sum(x) for x in branch_lists]
-    graph_capture_list.append(1)
-    draft_model.initialize_cuda_graph(graph_capture_list)
     sampling_callables = {}
     sample_gather_indices = {}
     for i in range(draft_step - 1):
         idx_len = len(idx_lists[i])
         num_samples = max(branch_lists[i])
-        sampling_callables[i] = cuda_graph_for_sampling_without_replacement(
+        sampling_callables[i] = cuda_graph_for_sampling_argmax(
             max_length=args.M, idx_len=idx_len, num_samples=num_samples,
-            temperature=args.T, tree_size=tree_size) 
+            temperature=args.T, tree_size=tree_size)  
     for i in range(draft_step - 1):
         ith_gather_list = []
         max_num_samples = max(branch_lists[i])
@@ -291,14 +273,23 @@ else:
         sample_gather_indices[i] = ith_gather_list
     
 
+    
+
+
+
+
+
+
 accelerator = Accelerator()
 dataloader = accelerator.prepare(dataloader)
 
+#warm up functions:
+
 if args.Mode == 'benchmark':
-    simulation_benchmark(target_model=target_model, draft_model=draft_model, dataloader=dataloader, T=args.T, top_p=args.P, 
+    simulation_benchmark(target_model=target_model, draft_model=draft_model, dataloader=dataloader, T=args.T, top_p=args.P,
                                                max_length=args.M, residual_graph = residual_graph, grow_map = grow_map, sampling_callables=sampling_callables, sample_gather_indices = sample_gather_indices)
 elif args.Mode == 'baseline':
-    simulation_baseline(target_model=target_model, dataloader=dataloader, T=args.T, top_p=args.P, max_length=args.M)
+    simulation_baseline(target_model=target_model, dataloader=dataloader, T=args.T, top_p=args.P)
 elif args.Mode == 'greedy':
     simulation_fast(target_model=target_model, draft_model=draft_model, dataloader=dataloader, T=args.T, top_p=args.P,
                                      max_length=args.M, residual_graph = residual_graph, grow_map = grow_map, sampling_callables=sampling_callables, sample_gather_indices = sample_gather_indices)
