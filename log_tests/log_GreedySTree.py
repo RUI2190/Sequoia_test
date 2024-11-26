@@ -5,6 +5,8 @@ from Tree.Tree import Tree
 import time
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
 from utils import get_sampling_logits, ChildrenAccept, get_residual
+from openai import OpenAI
+import json
 class GreedySTree(Tree):
     def __init__(self, 
                  draft_model_engine :GraphInferenceEngine,
@@ -87,11 +89,11 @@ class GreedySTree(Tree):
         self.forward_logs = {
             "generate_tokens": [],
             "accepted_path": [],    
+            'draft_generated_tokens': [],
             "depth":[],  
             "tree_width": [],  
             "tree_budget": []
         }
-
 
     @torch.inference_mode()
     def collective_grow_static(self, idx_list, n_branch_list :list[int], benchmark=False, grow_step = None):
@@ -110,9 +112,8 @@ class GreedySTree(Tree):
                 torch.cuda.synchronize()
                 t1 = time.time()
         new_tokens_set = self.sampling_callables[grow_step](self.draft_logits[idx_list])
-        
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
-            
+        self.forward_logs['draft_generated_tokens'].append(new_tokens_set.tolist())
         if benchmark:
                     torch.cuda.synchronize()
                     t2 = time.time()

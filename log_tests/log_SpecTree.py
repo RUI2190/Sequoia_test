@@ -4,6 +4,9 @@ from Tree.Tree import Tree
 import time
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
 from utils import get_sampling_logits, ChildrenAccept, get_residual
+from openai import OpenAI
+import json
+
 class SpecTree(Tree):
     def __init__(self, 
                  draft_model_engine :GraphInferenceEngine,
@@ -32,6 +35,8 @@ class SpecTree(Tree):
         self.forward_logs = {
             "generate_tokens": [],
             "accepted_path": [],    
+            'draft_generated_tokens': [],
+            'gpt4label':[],
             "depth":[],  
             "tree_width": [],  
             "tree_budget": []
@@ -94,6 +99,8 @@ class SpecTree(Tree):
         self.rand = torch.empty((self.tree_size, self.draft_logits.shape[1]), dtype=self.dtype).uniform_().to(self.device)
         self.seq_to_use = list(range(self.max_length))
     
+
+    
     @torch.inference_mode()
     def collective_grow_static(self, idx_list :list[int], n_branch_list :list[int], benchmark=False, grow_step = None):
         
@@ -112,6 +119,9 @@ class SpecTree(Tree):
 
         new_tokens_set :torch.LongTensor = self.sampling_callables[grow_step](self.draft_logits[idx_list], self.rand[idx_list])
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
+
+        self.forward_logs['draft_generated_tokens'].append(new_tokens_set.tolist())
+        
         if benchmark:
                     torch.cuda.synchronize()
                     t2 = time.time()
@@ -305,3 +315,4 @@ class SpecTree(Tree):
         self.forward_logs["tree_width"] = [len(self.Successors[i]) for i in range(min(self.num_nodes, len(self.Successors)))]
         self.forward_logs["depth"] = self.depth
         return self.forward_logs
+    

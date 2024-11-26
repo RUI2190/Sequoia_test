@@ -3,6 +3,9 @@ from Tree.Tree import Tree
 import time
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
 from utils import ChildrenAccept
+from openai import OpenAI
+import json
+
 class GreedyTree(Tree):
     def __init__(self, 
                  draft_model_engine :GraphInferenceEngine,
@@ -83,9 +86,10 @@ class GreedyTree(Tree):
         self.seq_to_use = list(range(self.max_length))
 
 
-        self.forward_logs = {     
+        self.forward_logs = {
             "generate_tokens": [],
             "accepted_path": [],    
+            'draft_generated_tokens': [],
             "depth":[],  
             "tree_width": [],  
             "tree_budget": []
@@ -110,7 +114,7 @@ class GreedyTree(Tree):
                 t1 = time.time()
         new_tokens_set = self.sampling_callables[grow_step](self.draft_logits[idx_list])
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
-            
+        self.forward_logs['draft_generated_tokens'].append(new_tokens_set.tolist())
         if benchmark:
                     torch.cuda.synchronize()
                     t2 = time.time()

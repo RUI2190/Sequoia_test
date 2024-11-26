@@ -4,6 +4,8 @@ from Tree.Tree import Tree
 import time
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
 from utils import get_sampling_logits, ChildrenAccept, get_residual
+from openai import OpenAI
+import json
 class SpecInferTree(Tree):
     def __init__(self, 
                  draft_model_engine :GraphInferenceEngine,
@@ -87,6 +89,7 @@ class SpecInferTree(Tree):
         self.forward_logs = {
             "generate_tokens": [],
             "accepted_path": [],    
+            'draft_generated_tokens': [],
             "depth":[],  
             "tree_width": [],  
             "tree_budget": []
@@ -117,6 +120,7 @@ class SpecInferTree(Tree):
             
         new_tokens_set = sampling_q.multinomial(num_samples=max_branch, replacement=True).flatten()
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
+        self.forward_logs['draft_generated_tokens'].append(new_tokens_set.tolist())
         if benchmark:
                     torch.cuda.synchronize()
                     t2 = time.time()
