@@ -91,8 +91,7 @@ class GreedySTree(Tree):
             "depth":[],  
             "tree_width": [],  
             "tree_budget": [],    
-            "accepted_path": [],   
-            "acceptance_tree_vector": [] 
+            "accepted_path": []
         }
 
     @torch.inference_mode()

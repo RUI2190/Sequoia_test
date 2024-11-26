@@ -164,6 +164,9 @@ class SpecTree(Tree):
             r = self.r[pos + (self.ground_truth_len - 1)]
             
             if p[token] > r * q[token]:
+                self.forward_logs['context'].append(token.item())
+                self.forward_logs['context_length'] = len(self.forward_logs['context'])
+
                 return (pos + (self.ground_truth_len - 1), None)
             else:
                 p = self.residual_graph(p, q)
@@ -219,15 +222,13 @@ class SpecTree(Tree):
             parent_id = accept_list[-1]
             pos, res = self.accept_step(parent_id=parent_id)
             if pos != -1:
-                accept_list.append(pos)
-                accept_path_log.append(pos)
+                self.forward_logs["accepted_path"].append(pos)
                 if self.tokens[pos] == 0 or self.tokens[pos] == 2:
                      terminal = True
                      break
             else:
                 residual = res
                 break
-        self.forward_logs["accepted_path"].append(accept_path_log)
 
         if benchmark:
             torch.cuda.synchronize()
@@ -309,7 +310,7 @@ class SpecTree(Tree):
         ]
 
     def get_forward_logs(self):
-        self.forward_logs["tree_width"] = [len(self.Successors[i]) if i < len(self.Successors) else 0 for i in range(self.num_nodes)]
+        self.forward_logs["tree_width"] = [len(self.Successors[i]) for i in range(min(self.num_nodes, len(self.Successors)))]
         self.forward_logs["position_ids"] = self.position_ids[:self.num_nodes].tolist()
         self.forward_logs["depth"] = self.depth
         return self.forward_logs

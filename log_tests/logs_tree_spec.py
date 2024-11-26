@@ -17,6 +17,8 @@ from utils import get_sampling_logits, _make_causal_mask, cuda_graph_for_residua
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
 from Engine.offload_engine import OffloadEngine
 import random
+import json
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, help='model')
 parser.add_argument('--target', type=str, help='target model')
@@ -95,6 +97,23 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
     forward_logs = spectree.get_forward_logs()
     for key, value in forward_logs.items():
         print(f"Log for {key}: {value}")
+
+    def convert_to_serializable(data):
+        if isinstance(data, dict):
+            return {key: convert_to_serializable(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [convert_to_serializable(item) for item in data]
+        elif isinstance(data, torch.Tensor):
+            return data.tolist()  # Convert PyTorch tensor to list
+        elif isinstance(data, np.ndarray):
+            return data.tolist()  # Convert NumPy array to list
+        return data
+
+    serializable_logs = convert_to_serializable(forward_logs)
+
+    with open('Spec_tree_logs.json', 'w') as f:
+        json.dump(serializable_logs, f, indent=4)
+
     return forward_logs
 
 

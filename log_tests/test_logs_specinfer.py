@@ -17,6 +17,8 @@ from utils import get_sampling_logits, _make_causal_mask, cuda_graph_for_residua
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
 from Engine.offload_engine import OffloadEngine
 import random
+import json
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, help='model')
 parser.add_argument('--target', type=str, help='target model')
@@ -94,6 +96,8 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
     forward_logs = spectree.get_forward_logs()
     for key, value in forward_logs.items():
         print(f"Log for {key}: {value}")
+    with open("specinfer_logs.json", "w") as json_file:
+        json.dump(forward_logs, json_file, indent=4)
     return forward_logs
 
 

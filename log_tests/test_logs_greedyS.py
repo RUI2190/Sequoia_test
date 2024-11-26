@@ -16,6 +16,8 @@ import time
 from utils import get_sampling_logits, _make_causal_mask, cuda_graph_for_residual, cuda_graph_for_sampling_argmax 
 from Engine.Engine import GraphInferenceEngine, GraphInferenceEngineTG
 import random
+import json
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=str, help='model')
 parser.add_argument('--target', type=str, help='target model')
@@ -93,6 +95,18 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
     forward_logs = spectree.get_forward_logs()
     for key, value in forward_logs.items():
         print(f"Log for {key}: {value}")
+
+    def convert_tensor(obj):
+        if isinstance(obj, torch.Tensor):
+            return obj.tolist()  # Convert Tensor to a list
+        elif isinstance(obj, dict):
+            return {k: convert_tensor(v) for k, v in obj.items()}  # Recursively apply for dicts
+        elif isinstance(obj, list):
+            return [convert_tensor(item) for item in obj]  # Recursively apply for lists
+        return obj
+    forward_logs_serializable = convert_tensor(forward_logs)
+    with open("greedy_logs.json", "w") as json_file:
+        json.dump(forward_logs_serializable, json_file, indent=4)
     return forward_logs
 
 
@@ -142,6 +156,10 @@ def simulation_baseline(target_model : GraphInferenceEngineTG, dataloader: DataL
             
     print("total time :{:.5f}s, latency :{:.5f}s, decoding step: {}".format(total_time, total_time / num_decoding_steps, num_decoding_steps))
     return num_decoding_steps
+
+
+
+
 def simulation_benchmark(target_model : GraphInferenceEngineTG, draft_model: GraphInferenceEngine, dataloader: DataLoader, T=0.6, top_p=0.9,  
                 max_length=512, residual_graph=None, grow_map=None, sampling_callables = None,
                 sample_gather_indices = None):
