@@ -85,14 +85,13 @@ class GreedySTree(Tree):
         self.seq_to_use = list(range(self.max_length))
 
         self.forward_logs = {
-            "context": [], 
-            "position_ids": [],     
-            "context_length": 0,      
+            "generate_tokens": [],
+            "accepted_path": [],    
             "depth":[],  
             "tree_width": [],  
-            "tree_budget": [],    
-            "accepted_path": []
+            "tree_budget": []
         }
+
 
     @torch.inference_mode()
     def collective_grow_static(self, idx_list, n_branch_list :list[int], benchmark=False, grow_step = None):
@@ -151,9 +150,11 @@ class GreedySTree(Tree):
             return -1
         
         for pos in children:
-
+            
             token = self.tokens[pos + (self.ground_truth_len - 1)]
+            self.forward_logs['generate_tokens'][-1].append(token.item())
             if token == target_token:
+                self.forward_logs['accepted_path'][-1].append(token.item())
                 return pos + (self.ground_truth_len - 1)
         
         return -1
@@ -162,6 +163,8 @@ class GreedySTree(Tree):
         
     @torch.inference_mode()
     def verify(self, benchmark = False):
+        self.forward_logs['generate_tokens'].append([])
+        self.forward_logs['accepted_path'].append([])
         new_node_num = (self.num_nodes - self.ground_truth_len + 1)
         if self.target_kv_len == 0:
             start_pos = 0
@@ -201,14 +204,12 @@ class GreedySTree(Tree):
         accept_list = self.seq_to_use[:self.ground_truth_len]
         
         terminal = False
-        accept_path_log = []
 
         while True:
             parent_id = accept_list[-1]
             pos = self.accept_step(parent_id=parent_id)
             if pos != -1:
                 accept_list.append(pos)
-                accept_path_log.append(pos)
                 if self.tokens[pos] == 0 or self.tokens[pos] == 2:
                      terminal = True
                      break
@@ -219,7 +220,7 @@ class GreedySTree(Tree):
             t3 = time.time()
         accept_length = len(accept_list)
 
-        self.forward_logs["accepted_path"].append(accept_path_log)
+        
 
         self.tokens[:accept_length] = self.tokens[accept_list]
         if not terminal:
@@ -283,8 +284,9 @@ class GreedySTree(Tree):
         self.draft_kv_len = self.num_nodes
         self.target_kv_len = len(accept_list)
 
+        self.forward_logs["tree_budget"].append(self.max_target_seq - self.num_nodes)
+
     def get_forward_logs(self):
         self.forward_logs["tree_width"] = [len(self.Successors[i]) if i < len(self.Successors) else 0 for i in range(self.num_nodes)]
-        self.forward_logs["position_ids"] = self.position_ids[:self.num_nodes].tolist()
         self.forward_logs["depth"] = self.depth
         return self.forward_logs

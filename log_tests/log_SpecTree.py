@@ -30,14 +30,11 @@ class SpecTree(Tree):
         
         # Initialize logs
         self.forward_logs = {
-            "context": [], 
-            "position_ids": [],     
-            "context_length": 0,      
+            "generate_tokens": [],
+            "accepted_path": [],    
             "depth":[],  
             "tree_width": [],  
-            "tree_budget": [],    
-            "accepted_path": [],   
-            "acceptance_tree_vector": [] 
+            "tree_budget": []
         }
 
         assert self.max_length == draft_model_engine.engine.max_length
@@ -162,11 +159,11 @@ class SpecTree(Tree):
             token = self.tokens[pos + (self.ground_truth_len - 1)]
             q = softmax(draft_logits / self.temperature, dim=-1)
             r = self.r[pos + (self.ground_truth_len - 1)]
-            
-            if p[token] > r * q[token]:
-                self.forward_logs['context'].append(token.item())
-                self.forward_logs['context_length'] = len(self.forward_logs['context'])
 
+            self.forward_logs['generate_tokens'][-1].append(token.item())
+
+            if p[token] > r * q[token]:
+                self.forward_logs['accepted_path'][-1].append(token.item())
                 return (pos + (self.ground_truth_len - 1), None)
             else:
                 p = self.residual_graph(p, q)
@@ -175,6 +172,8 @@ class SpecTree(Tree):
 
     @torch.inference_mode()
     def verify(self, benchmark = False):
+        self.forward_logs['generate_tokens'].append([])
+        self.forward_logs['accepted_path'].append([])
         new_node_num = (self.num_nodes - self.ground_truth_len + 1)
         
         if self.target_kv_len == 0:
@@ -216,13 +215,12 @@ class SpecTree(Tree):
         self.target_logits = softmax(self.target_logits / self.temperature, dim=-1)
         
         accept_list = self.seq_to_use[:self.ground_truth_len]
-        accept_path_log = []
         terminal = False
         while True:
             parent_id = accept_list[-1]
             pos, res = self.accept_step(parent_id=parent_id)
             if pos != -1:
-                self.forward_logs["accepted_path"].append(pos)
+                accept_list.append(pos)
                 if self.tokens[pos] == 0 or self.tokens[pos] == 2:
                      terminal = True
                      break
@@ -301,16 +299,9 @@ class SpecTree(Tree):
         self.draft_kv_len = self.num_nodes
         self.target_kv_len = len(accept_list)
 
-        self.forward_logs["context"] = valid_tokens 
         self.forward_logs["tree_budget"].append(self.max_target_seq - self.num_nodes)
-        self.forward_logs["accepted_path"] = accept_list
-        self.forward_logs["context_length"] = self.num_nodes
-        self.forward_logs["acceptance_tree_vector"] = [
-            1 if node in accept_list else 0 for node in range(self.num_nodes)
-        ]
 
     def get_forward_logs(self):
         self.forward_logs["tree_width"] = [len(self.Successors[i]) for i in range(min(self.num_nodes, len(self.Successors)))]
-        self.forward_logs["position_ids"] = self.position_ids[:self.num_nodes].tolist()
         self.forward_logs["depth"] = self.depth
         return self.forward_logs

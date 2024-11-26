@@ -104,9 +104,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
         elif isinstance(data, list):
             return [convert_to_serializable(item) for item in data]
         elif isinstance(data, torch.Tensor):
-            return data.tolist()  # Convert PyTorch tensor to list
-        elif isinstance(data, np.ndarray):
-            return data.tolist()  # Convert NumPy array to list
+            return data.tolist() 
         return data
 
     serializable_logs = convert_to_serializable(forward_logs)

@@ -28,7 +28,7 @@ def evaluate_trace(data_trace):
             {"role": "system", "content": "You are an professional LLM evaluator."},
             {"role": "user", "content": prompt}
         ],
-        max_tokens=200,
+        max_tokens=300,
         temperature=0
     )
     # Correctly access the text of the first completion
