@@ -1,38 +1,59 @@
 import os
-from openai import OpenAI
 import json
+from openai import OpenAI
+from transformers import AutoTokenizer
 
+# Initialize OpenAI client
 client = OpenAI()
 
+# Define target model and tokenizer
+target_model_name = "meta-llama/Llama-2-7b-hf"
+tokenizer = AutoTokenizer.from_pretrained(target_model_name)
+
 # Load the JSON file
-with open("SpecTree_logs.json", "r") as file:
+with open("Spec_tree_logs.json", "r") as file:
     data = json.load(file)
 
-prompt1 = """
-You are an professional LLM evaluator. Your task is to score the model's output trace against the expected output based on the following criteria:
-1. Correctness: Is the trace logically correct? (Score 1-10)
-2. Completeness: Does the trace fully satisfy the expected requirements? (Score 1-10)
-3. Clarity: Is the trace clear and easy to understand? (Score 1-10)
+# Define the evaluation function
+def evaluate_draft_tokens(draft_tokens):
+    # Decode the tokens into text
+    decoded_text = tokenizer.decode(draft_tokens, skip_special_tokens=True)
 
-Log Trace:
-{data_trace}
+    # Create the prompt asking GPT-4 to split the text into 10-token chunks and evaluate
+    prompt = f"""
+    You are an expert LLM evaluator. Your task is to assess whether each 10-token chunk in the following text makes sense.
+    Return a list of 1s and 0s, where 1 means the chunk makes sense and 0 means it doesn't.
 
-Provide a score for each criterion and a brief explanation for the score.
-"""
+    Here is the text:
+    {decoded_text}
+    
+    Please split the text into chunks of 10 tokens and evaluate each chunk.
+    Provide your response as a list of integers, e.g., [1, 0, 1, 1, 0, ...]
+    """
 
-def evaluate_trace(data_trace):
-    prompt = prompt1.format(data_trace=data_trace)
-    response = client.chat.completions.create(
-        model="gpt-4",  # Use GPT-4 or any available model
+    # Make the API call
+    completion = client.chat.completions.create(
+        model="gpt-4o",
         messages=[
-            {"role": "system", "content": "You are an professional LLM evaluator."},
+            {"role": "system", "content": "You are an expert LLM evaluator."},
             {"role": "user", "content": prompt}
-        ],
-        max_tokens=300,
-        temperature=0
+        ]
     )
-    # Correctly access the text of the first completion
-    return response.choices[0].message
+    print(completion.choices[0].message)
+    # Extract the response, which should be a list of integers
+    return completion.choices[0].message
 
-evaluation = evaluate_trace(data)
-print(evaluation)
+
+results = []  # Store the evaluation results for each draft
+for draft_tokens in data["draft_generated_tokens"]:
+    draft_evaluations = evaluate_draft_tokens(draft_tokens)
+    results.append(draft_evaluations)
+
+# Update the JSON file with the evaluation results
+data["evaluation_results"] = results  
+
+# Save the updated JSON file
+with open("Spec_tree_logs_evaluated.json", "w") as file:
+    json.dump(data, file, indent=4)
+
+print("Evaluation complete. Results saved to SpecTree_logs_evaluated.json.")
