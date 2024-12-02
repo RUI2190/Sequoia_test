@@ -109,7 +109,7 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
 
     serializable_logs = convert_to_serializable(forward_logs)
 
-    with open('Spec_tree_logs.json', 'w') as f:
+    with open('./logs/Spec_tree_logs.json', 'w') as f:
         json.dump(serializable_logs, f, indent=4)
 
     return forward_logs

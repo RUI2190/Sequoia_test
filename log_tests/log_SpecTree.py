@@ -36,7 +36,6 @@ class SpecTree(Tree):
             "generate_tokens": [],
             "accepted_path": [],    
             'draft_generated_tokens': [],
-            'gpt4label':[],
             "depth":[],  
             "tree_width": [],  
             "tree_budget": []

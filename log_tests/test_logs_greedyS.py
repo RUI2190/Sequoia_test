@@ -96,17 +96,19 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
     for key, value in forward_logs.items():
         print(f"Log for {key}: {value}")
 
-    def convert_tensor(obj):
-        if isinstance(obj, torch.Tensor):
-            return obj.tolist()  # Convert Tensor to a list
-        elif isinstance(obj, dict):
-            return {k: convert_tensor(v) for k, v in obj.items()}  # Recursively apply for dicts
-        elif isinstance(obj, list):
-            return [convert_tensor(item) for item in obj]  # Recursively apply for lists
-        return obj
-    forward_logs_serializable = convert_tensor(forward_logs)
-    with open("greedy_logs.json", "w") as json_file:
-        json.dump(forward_logs_serializable, json_file, indent=4)
+    def convert_to_serializable(data):
+        if isinstance(data, dict):
+            return {key: convert_to_serializable(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [convert_to_serializable(item) for item in data]
+        elif isinstance(data, torch.Tensor):
+            return data.tolist() 
+        return data
+
+    serializable_logs = convert_to_serializable(forward_logs)
+
+    with open("./logs/greedy_logs.json", "w") as json_file:
+        json.dump(serializable_logs, json_file, indent=4)
     return forward_logs
 
 

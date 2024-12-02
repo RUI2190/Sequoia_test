@@ -96,8 +96,22 @@ def simulation_fast(target_model : GraphInferenceEngineTG, draft_model: GraphInf
     forward_logs = spectree.get_forward_logs()
     for key, value in forward_logs.items():
         print(f"Log for {key}: {value}")
-    with open("specinfer_logs.json", "w") as json_file:
-        json.dump(forward_logs, json_file, indent=4)
+
+
+    def convert_to_serializable(data):
+        if isinstance(data, dict):
+            return {key: convert_to_serializable(value) for key, value in data.items()}
+        elif isinstance(data, list):
+            return [convert_to_serializable(item) for item in data]
+        elif isinstance(data, torch.Tensor):
+            return data.tolist() 
+        return data
+
+    serializable_logs = convert_to_serializable(forward_logs)
+
+
+    with open("./logs/specinfer_logs.json", "w") as json_file:
+        json.dump(serializable_logs, json_file, indent=4)
     return forward_logs
 
 
