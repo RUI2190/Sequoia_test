@@ -35,7 +35,7 @@ class SpecTree(Tree):
         self.forward_logs = {
             "generate_tokens": [],
             "accepted_path": [],    
-            'draft_generated_tokens': [],
+            'draft_generated_tokens': [[]],
             "depth":[],  
             "tree_width": [],  
             "tree_budget": []
@@ -119,7 +119,7 @@ class SpecTree(Tree):
         new_tokens_set :torch.LongTensor = self.sampling_callables[grow_step](self.draft_logits[idx_list], self.rand[idx_list])
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
 
-        self.forward_logs['draft_generated_tokens'].append(new_tokens_set.tolist())
+        self.forward_logs['draft_generated_tokens'][-1].append(new_tokens_set.tolist())
         
         if benchmark:
                     torch.cuda.synchronize()
@@ -183,6 +183,7 @@ class SpecTree(Tree):
     def verify(self, benchmark = False):
         self.forward_logs['generate_tokens'].append([])
         self.forward_logs['accepted_path'].append([])
+        self.forward_logs['draft_generated_tokens'].append([])
         new_node_num = (self.num_nodes - self.ground_truth_len + 1)
         
         if self.target_kv_len == 0:
