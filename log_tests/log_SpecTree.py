@@ -107,9 +107,6 @@ class SpecTree(Tree):
             x1 = 0.0
             x2 = 0.0
         
-        
-        
-        
         total_branch = sum(n_branch_list)
 
         if benchmark:
@@ -119,7 +116,7 @@ class SpecTree(Tree):
         new_tokens_set :torch.LongTensor = self.sampling_callables[grow_step](self.draft_logits[idx_list], self.rand[idx_list])
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
 
-        self.forward_logs['draft_generated_tokens'][-1].append(new_tokens_set.tolist())
+        self.forward_logs['draft_generated_tokens'][-1].append(new_tokens_set[self.sample_gather_indices[grow_step]].tolist())
         
         if benchmark:
                     torch.cuda.synchronize()

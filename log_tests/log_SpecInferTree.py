@@ -89,7 +89,7 @@ class SpecInferTree(Tree):
         self.forward_logs = {
             "generate_tokens": [],
             "accepted_path": [],    
-            'draft_generated_tokens': [],
+            'draft_generated_tokens': [[]],
             "depth":[],  
             "tree_width": [],  
             "tree_budget": []
@@ -120,7 +120,7 @@ class SpecInferTree(Tree):
             
         new_tokens_set = sampling_q.multinomial(num_samples=max_branch, replacement=True).flatten()
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
-        self.forward_logs['draft_generated_tokens'].append(new_tokens_set.tolist())
+        self.forward_logs['draft_generated_tokens'][-1].append(new_tokens_set.tolist())
         if benchmark:
                     torch.cuda.synchronize()
                     t2 = time.time()
@@ -183,6 +183,7 @@ class SpecInferTree(Tree):
     def verify(self, benchmark = False):
         self.forward_logs['generate_tokens'].append([])
         self.forward_logs['accepted_path'].append([])
+        self.forward_logs['draft_generated_tokens'].append([])
         new_node_num = (self.num_nodes - self.ground_truth_len + 1)
         if self.target_kv_len == 0:
             start_pos = 0
