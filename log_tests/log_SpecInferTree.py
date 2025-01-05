@@ -157,6 +157,9 @@ class SpecInferTree(Tree):
         p = self.target_logits[logits_id]
         draft_logits = self.draft_logits[logits_id]
         
+        if p.size(0) != draft_logits.size(0):
+            p = p[:draft_logits.size(0)]
+            
         children = self.Successors[logits_id]
 
         if len(children) == 0:

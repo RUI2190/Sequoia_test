@@ -9,7 +9,7 @@ from tqdm import tqdm
 from torch.nn.functional import softmax
 from accelerate import Accelerator
 import argparse
-from data_converter import convert_dataset, convert_gsm8k_dataset
+from data_converter import convert_dataset, convert_gsm8k_dataset, convert_cnn_dataset
 import argparse
 from log_tests.log_GreedySTree import GreedySTree
 import time
@@ -249,6 +249,8 @@ import random
 random.shuffle(eval_list)
 if args.dataset == 'openwebtext':
     tokenized_dataset_eval = load_from_disk("../dataset/openwebtext_eval").select(list(range(args.start, args.end)))
+elif args.dataset == 'cnn':
+    tokenized_dataset_eval = convert_cnn_dataset(tokenizer=tokenizer).select(eval_list[args.start :args.end])
 elif args.dataset == 'gsm8k':
     file_path = "/workspace/haoyang/Sequoia_test/log_tests/gsm8k_train.jsonl"
     tokenized_dataset_eval = convert_gsm8k_dataset(tokenizer=tokenizer, file_path=file_path).select(eval_list[args.start :args.end])

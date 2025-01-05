@@ -116,7 +116,7 @@ class SpecTree(Tree):
         new_tokens_set :torch.LongTensor = self.sampling_callables[grow_step](self.draft_logits[idx_list], self.rand[idx_list])
         self.tokens[self.num_nodes: self.num_nodes + total_branch] = new_tokens_set[self.sample_gather_indices[grow_step]]
 
-        self.forward_logs['draft_generated_tokens'][-1].append(new_tokens_set[self.sample_gather_indices[grow_step]].tolist())
+        self.forward_logs['draft_generated_tokens'][-1].append(new_tokens_set[self.sample_gather_indices[grow_step]])
         
         if benchmark:
                     torch.cuda.synchronize()
@@ -155,6 +155,9 @@ class SpecTree(Tree):
         p = self.target_logits[logits_id]
         draft_logits = self.draft_logits[logits_id]
         
+        if p.size(0) != draft_logits.size(0):
+            p = p[:draft_logits.size(0)]
+
         children = self.Successors[logits_id]
 
         if len(children) == 0:
@@ -169,7 +172,7 @@ class SpecTree(Tree):
             self.forward_logs['generate_tokens'][-1].append(token.item())
 
             if p[token] > r * q[token]:
-                self.forward_logs['accepted_path'][-1].append(token.item())
+                self.forward_logs['accepted_path'][-1].append(token)
                 return (pos + (self.ground_truth_len - 1), None)
             else:
                 p = self.residual_graph(p, q)

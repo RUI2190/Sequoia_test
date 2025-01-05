@@ -10,6 +10,7 @@ client = OpenAI()
 # Define target model and tokenizer
 target_model_name = "meta-llama/Llama-2-13b-hf"
 tokenizer = AutoTokenizer.from_pretrained(target_model_name)
+tokenizer.pad_token = tokenizer.eos_token
 
 # Load the JSON file
 with open("Spec_tree_logs.json", "r") as file:
@@ -36,6 +37,10 @@ def evaluate_chunk(Accept,chunk):
     # Extract the response content and return the evaluation
     print(completion.choices[0].message.content)
     return completion.choices[0].message.content
+
+# for i in data["accepted_path"]:
+#     accept_text = tokenizer.decode(i, skip_special_tokens=True)
+#     print(accept_text)
 
 results = []  # Store the evaluation results for each draft
 for i in range(len(data["draft_generated_tokens"])):
